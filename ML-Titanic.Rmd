@@ -1,0 +1,130 @@
+---
+title: "ML-Titanic"
+author: "Wei-Ting,Lin (s3698773)"
+date: "7/23/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readr)
+library(dplyr)
+library(missForest)
+library(mice)
+library(MASS)
+
+```
+
+import data 
+```{r}
+train <- read_csv("train.csv")
+test <- read_csv("test.csv")
+```
+
+
+data wrangling 
+```{r}
+train[c(3,5,12)] <- lapply(train[c(3,5,12)],as.factor)
+
+test[c(2,4,11)] <- lapply(test[c(2,4,11)],as.factor)
+
+```
+
+```{r}
+
+#missing value
+missing_train <- colSums(is.na(train))
+missing_train
+
+missing_test <- colSums(is.na(test))
+missing_test
+```
+
+
+* check the relationship between missing age value with other variables
+```{r}
+# mean age group by sex 
+train %>% group_by(Sex) %>% summarise( mean_Age = mean(Age, na.rm = T))
+
+# avg. for those who has Parent & child
+train %>% group_by(SibSp) %>% summarise( mean_Age = mean(Age, na.rm = T))
+```
+
+* impute missing age, using `mice` package
+```{r}
+#overview of the pattern of missing value
+md.pattern(train)
+
+md.pattern(test)
+```
+impute missing values
+```{r}
+train.imp <- mice(train,meth='pmm',seed=500)
+
+summary(train.imp)
+
+train.complete <- complete(train.imp)
+```
+
+```{r}
+md.pattern(train.complete)
+```
+
+* impute missing value for train data
+```{r}
+test.imp <- mice(test,meth='pmm',seed=500)
+
+summary(test.imp)
+
+test.complete <- complete(test.imp)
+```
+
+```{r}
+md.pattern(test.complete)
+```
+there's still 687 missing value in Cabin (train), i'll exclude this attribute for now. 
+
+
+* build 1st Model : logistic regression 
+
+```{r}
+logit.model <- glm(Survived ~ Pclass + Sex + Age + SibSp + Parch + Ticket + Fare + Embarked
+                   ,maxit = 100, family = binomial , train.complete )
+
+summary(logit.model)
+```
+
+*model selection 
+```{r}
+logit.model.new <-  stepAIC(logit.model, trace = 0)
+
+summary(logit.model.new)
+
+```
+
+
+* predict 
+
+```{r}
+
+test.complete$Survived.prob <- predict(logit.model.new, type = "response", newdata = test.complete)
+
+test.complete$Survived <- ifelse(test.complete$Survived.prob > 0.5 , 1,0)
+
+```
+
+
+* export the predicted data
+
+```{r}
+write.csv(test.complete[c(1,12)],file = "submision_1_logisticRegression.csv", row.names = F)
+
+```
+
+
+
+
+
